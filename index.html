@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Purchase Order System (Local)</title>
+  
+<style>
+  /* ========== CSS: Styling tampilan UI ========== */
+
+    body {
+      font-family: Arial;
+      background: #f2f2f2;
+      padding: 20px;
+    }
+    .page { display: none; }
+    .active { display: block; }
+    nav {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    nav button {
+      padding: 10px 20px;
+      margin: 0 10px;
+      border: none;
+      background-color: #2c7be5;
+      color: white;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+    }
+    th, td {
+      padding: 10px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+    th { background: #2c7be5; color: white; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    form {
+      background: #fff;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 650px;
+      margin: auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    button.submit {
+      background: #2c7be5;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #filter { margin-bottom: 20px; }
+    #modal {
+      display:none;
+      position:fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      background:rgba(0,0,0,0.5);
+    }
+    #modal > div {
+      background:white;
+      padding:20px;
+      border-radius:10px;
+      width:90%;
+      max-width:500px;
+      margin:100px auto;
+      position:relative;
+    }
+  </style>
+</head>
+<body>
+
+
+<!-- ========== NAVIGASI: Tombol Dashboard & Form Input ========== -->
+<nav>
+  <button onclick="showPage('dashboardPage')">📋 Dashboard</button>
+  <button onclick="showPage('formPage')">📝 Input PO</button>
+</nav>
+
+
+<!-- ========== HALAMAN DASHBOARD: Menampilkan data PO dari Google Sheets ========== -->
+<div class="page active" id="dashboardPage">
+  <h2>Dashboard Purchase Order</h2>
+
+  <div id="filter">
+    <label>Filter Status: </label>
+    <select id="statusFilter">
+      <option value="all">Semua</option>
+      <option value="Menunggu Approval">Menunggu Approval</option>
+      <option value="Approved">Approved</option>
+      <option value="Dipesan">Dipesan</option>
+      
+    </select>
+  </div>
+
+  <table id="poTable">
+    <thead>
+      <tr>
+        <th>Supplier</th>
+        <th>Item</th>
+        <th>Qty</th>
+        <th>Unit</th>
+        <th>Status</th>
+        <th>Order Date</th>
+        <th>Approved by</th>
+        <th>Aksi</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+
+<!-- ========== HALAMAN FORM: Untuk input PO ke Google Sheets ========== -->
+<div class="page" id="formPage">
+  <h2 style="text-align:center;">Form Purchase Order</h2>
+  <form id="poForm">
+    <label>Supplier:</label><input type="text" name="supplier" required>
+    <label>Stock Check Date:</label><input type="datetime-local" name="stockCheckDate" required>
+    <label>Order Date:</label><input type="datetime-local" name="orderDate" id="orderDate" readonly>
+    <label>Item:</label><input type="text" name="item" required>
+    <label>Qty:</label><input type="number" name="qty" min="1" required>
+    <label>Unit:</label>
+    <select name="unit" required>
+      <option value="PCS">PCS</option>
+      <option value="KG">KG</option>
+      <option value="Liter">Liter</option>
+      <option value="Gram">Gram</option>
+      <option value="Mililiter">Mililiter</option>
+      <option value="Lusin">Lusin</option>
+      <option value="Bungkus">Bungkus</option>
+    </select>
+    <label>Order Information:</label><textarea name="orderInfo"></textarea>
+    <label>Status:</label>
+    <select name="status" required>
+      <option value="Menunggu Approval">Menunggu Approval</option>
+      <option value="Approved">Approved</option>
+      <option value="Dipesan">Dipesan</option>
+    </select>
+    <label>Stock Checked by:</label><input type="text" name="stockCheckedBy" required>
+    <label>Approved by:</label><input type="text" name="approvedBy">
+    <label>Order Placed by:</label><input type="text" name="orderPlacedBy">
+    <button class="submit" type="submit">Submit PO</button>
+  </form>
+</div>
+
+
+<!-- ========== MODAL: Untuk menampilkan detail dan edit PO ========== -->
+<div id="modal">
+  <div>
+    <h3 id="modalTitle">Detail PO</h3>
+    <div id="modalContent"></div>
+    <button onclick="closeModal()">Tutup</button>
+  </div>
+</div>
+
+
+<script>
+  /* ========== KONFIGURASI: URL Web App Google Sheets ========== */
+  const SHEET_URL = "https://script.google.com/macros/s/AKfycbwdoWnVGx_6zk5NOGbaYoavBGDbclvYsGdtdido9Uhn6V3Dd6VRhG-V64EpTwC6te7J/exec";
+
+  /* ========== DATA LOKAL: Menyimpan data dari Google Sheets sementara di memori ========== */
+  let localData = [];
+
+  
+  // Fungsi untuk menampilkan halaman tertentu (dashboard / form)
+  function showPage(id) {
+    document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+  }
+
+  
+  // Set default Order Date ke waktu sekarang
+  document.getElementById("orderDate").value = new Date().toISOString().slice(0,16);
+
+  
+  // Event: Ketika form PO disubmit, data dikirim ke Google Sheets
+  document.getElementById("poForm").addEventListener("submit" , function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const obj = {};
+    formData.forEach((val, key) => obj[key] = val);
+    obj["timestamp"] = new Date().toLocaleString();
+    fetch(SHEET_URL, {
+  method: "POST",
+  body: JSON.stringify(obj)
+})
+.then(res => res.text())
+.then(() => {
+  alert("PO berhasil dikirim ke Google Sheets!");
+  this.reset();
+  
+  // Set default Order Date ke waktu sekarang
+  document.getElementById("orderDate").value = new Date().toISOString().slice(0,16);
+  showPage("dashboardPage");
+  loadDataFromSheet();
+})
+.catch(err => alert("Gagal mengirim: " + err));
+
+    this.reset();
+    
+  // Set default Order Date ke waktu sekarang
+  document.getElementById("orderDate").value = new Date().toISOString().slice(0,16);
+    showPage("dashboardPage");
+    renderTable(localData);
+  });
+
+  
+  // Event: Filter status di dropdown dashboard
+  document.getElementById("statusFilter").addEventListener("change" , () => {
+    const selected = document.getElementById("statusFilter").value;
+    const filtered = selected === "all" ? localData : localData.filter(d => d.status === selected);
+    renderTable(filtered);
+  });
+
+  
+  // Fungsi: Render semua data PO ke dalam tabel dashboard
+  function renderTable(data) {
+    const tbody = document.querySelector("#poTable tbody");
+    tbody.innerHTML = "";
+    data.forEach((row, index) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${row.supplier}</td>
+        <td>${row.item}</td>
+        <td>${row.qty}</td>
+        <td>${row.unit}</td>
+        <td style="background-color:${getStatusColor(row.status)}; color:#000; font-weight:bold;">${row.status}</td>
+        <td>${new Date(row.orderDate).toLocaleString()}</td>
+        <td>${row.approvedBy}</td>
+        <td>
+          <button onclick="viewDetail(${index})">🔍 View</button>
+          <button onclick="editData(${index})">✏️ Edit</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  
+  // Fungsi: Tutup modal popup
+  function closeModal() {
+    document.getElementById("modal").style.display = "none";
+    document.getElementById("modalContent").innerHTML = "";
+  }
+
+  
+  // Fungsi: Tampilkan detail data PO di modal
+  function viewDetail(index) {
+    const data = localData[index];
+    let content = `
+      <p><strong>Supplier:</strong> ${data.supplier}</p>
+      <p><strong>Item:</strong> ${data.item}</p>
+      <p><strong>Qty:</strong> ${data.qty} ${data.unit}</p>
+      <p><strong>Status:</strong> ${data.status}</p>
+      <p><strong>Order Date:</strong> ${new Date(data.orderDate).toLocaleString()}</p>
+      <p><strong>Approved By:</strong> ${data.approvedBy}</p>
+      <p><strong>Stock Checked By:</strong> ${data.stockCheckedBy}</p>
+      <p><strong>Order Placed By:</strong> ${data.orderPlacedBy}</p>
+      <p><strong>Info:</strong> ${data.orderInfo}</p>
+    `;
+    document.getElementById("modalTitle").innerText = "🔍 Detail PO";
+    document.getElementById("modalContent").innerHTML = content;
+    document.getElementById("modal").style.display = "block";
+  }
+
+  
+  // Fungsi: Edit data PO dan tampilkan di modal
+  function editData(index) {
+    const data = localData[index];
+    let content = `
+      <form id="editForm">
+        <label>Supplier:</label><input name="supplier" value="${data.supplier}" required>
+        <label>Item:</label><input name="item" value="${data.item}" required>
+        <label>Qty:</label><input name="qty" type="number" value="${data.qty}" required>
+        <label>Unit:</label>
+        <select name="unit">
+          <option ${data.unit === 'PCS' ? 'selected' : ''}>PCS</option>
+          <option ${data.unit === 'Box' ? 'selected' : ''}>Box</option>
+          <option ${data.unit === 'Liter' ? 'selected' : ''}>Liter</option>
+          <option ${data.unit === 'Pack' ? 'selected' : ''}>Pack</option>
+          <option ${data.unit === 'Other' ? 'selected' : ''}>Other</option>
+        </select>
+        <label>Status:</label>
+        <select name="status">
+          <option ${data.status === 'Menunggu Approval' ? 'selected' : ''}>Menunggu Approval</option>
+          <option ${data.status === 'Approved' ? 'selected' : ''}>Approved</option>
+          <option ${data.status === 'Dipesan' ? 'selected' : ''}>Dipesan</option>
+          
+        </select>
+        <label>Approved By:</label><input name="approvedBy" value="${data.approvedBy}">
+        <label>Stock Checked By:</label><input name="stockCheckedBy" value="${data.stockCheckedBy}">
+        <label>Order Placed By:</label><input name="orderPlacedBy" value="${data.orderPlacedBy}">
+        <label>Order Info:</label><textarea name="orderInfo">${data.orderInfo}</textarea>
+        <br>
+        <button type="submit">💾 Simpan</button>
+      </form>
+    `;
+    document.getElementById("modalTitle").innerText = "✏️ Edit PO";
+    document.getElementById("modalContent").innerHTML = content;
+    document.getElementById("modal").style.display = "block";
+
+    document.getElementById("editForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const updated = new FormData(this);
+      updated.forEach((val, key) => localData[index][key] = val);
+      closeModal();
+      renderTable(localData);
+      alert("Data berhasil diperbarui.");
+    });
+  }
+
+  
+  
+  // Fungsi: Mengembalikan warna berdasarkan status
+  function getStatusColor(status) {
+    switch (status) {
+      case 'Menunggu Approval': return '#f8d7da'; // Merah muda
+      case 'Approved': return '#fff3cd'; // Kuning pucat
+      case 'Dipesan': return '#d4edda'; // Hijau pucat
+      default: return '#f0f0f0'; // Netral
+    }
+  }
+
+  
+  
+function loadDataFromSheet() {
+  fetch(SHEET_URL)
+    .then(res => res.json())
+    .then(data => {
+      localData = data;
+      renderTable(data);
+    })
+    .catch(err => console.error("Load error:", err));
+}
+
+window.onload = loadDataFromSheet;
+
+
+  // Inisialisasi awal
+  renderTable(localData);
+
+</script>
+
+</body>
+</html>

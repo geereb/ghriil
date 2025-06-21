@@ -175,6 +175,8 @@
   /* ========== DATA LOKAL: Menyimpan data dari Google Sheets sementara di memori ========== */
   let localData = [];
 
+  let localData = [];
+
   
   // Fungsi untuk menampilkan halaman tertentu (dashboard / form)
   function showPage(id) {
@@ -337,18 +339,20 @@
 
   
   
-function loadDataFromSheet() {
-  fetch(SHEET_URL)
-    .then(res => res.json())
-    .then(data => {
-      localData = data;
-      renderTable(data);
-    })
-    .catch(err => console.error("Load error:", err));
-}
+  // Fungsi: Ambil data PO dari Google Sheets saat load halaman
+  function loadDataFromSheet() {
+    fetch(SHEET_URL)
+      .then(res => res.json())
+      .then(data => {
+        localData = data;
+        renderTable(data);
+      })
+      .catch(err => console.error("Load error:", err));
+  }
 
-window.onload = loadDataFromSheet;
-
+  
+  // Trigger fungsi load saat halaman dibuka
+  window.onload = loadDataFromSheet;
 
   // Inisialisasi awal
   renderTable(localData);
